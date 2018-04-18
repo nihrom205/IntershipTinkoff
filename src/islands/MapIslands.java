@@ -1,8 +1,6 @@
 package islands;
 
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Queue;
+import java.util.*;
 
 /**
  * Поиск островов.
@@ -12,6 +10,9 @@ import java.util.Queue;
  * @since 16.04.2018
  */
 public class MapIslands {
+
+    private Set<Node> set = new HashSet<>(); // результат
+    private volatile boolean finish = false; // завершение 1 потока
 
     // хранилище "узлов" остравов
     private List<Node> storegeIntership = new LinkedList<>();
@@ -33,7 +34,7 @@ public class MapIslands {
      * метод поиска соседних островов.
      * @param curentNode текущий узел.
      */
-    private void findNeighbors(Node curentNode) {
+    private Node findNeighbors(Node curentNode) {
         storePosition.add(curentNode.getPosition());
         Position position;
 
@@ -43,6 +44,7 @@ public class MapIslands {
             curentNode.addPosition(position);
             oldPosition.add(position);
         }
+        return curentNode;
     }
 
     /**
@@ -81,50 +83,91 @@ public class MapIslands {
     }
 
     /**
-     * метод пробегается по массиву и ищет острова "1", создаятся узел в который помещается координаты.
-     *
-     * @param map массив
+     * Метод выводит не аечать кол-во остравов
      */
-    private void intership(int[][] map) {
-        for (int i = 0; i < map[0].length; i++) {
-            for (int j = 0; j < map.length; j++) {
-                if (map[i][j] == 1) {
-                    Position position = new Position(i, j);
-                    if (!oldPosition.contains(position)) {
-                        Node newNode = new Node(position);
-                        findNeighbors(newNode); // ищем соседние острова
-                        // если координат больше 1 то это остров, сохраняем storegeIntership
-                        if (newNode.getStorePositions().size() > 1) {
-                            storegeIntership.add(newNode);
-                        }
-
-                    }
-                }
-            }
-        }
-
-        System.out.println();
-    }
-
     private void prinIntership() {
+        System.out.println("Количество остравов: " + set.size());
 
-        // выводит координаты всех остарвов
+        // выводит координаты остарвова и их координаты
 //==============================================================================
-//        for (Node node : storegeIntership) {
-//            for (Position position : node.getStorePositions()) {
-//                System.out.print(position + " ");
-//
+//        for (Node node : set) {
+//            for (Position pos : node.getStorePositions()) {
+//                System.out.print(pos + " ");
 //            }
 //            System.out.println();
+//
 //        }
 //==============================================================================
-
-        System.out.println("Количество остравов: " + storegeIntership.size());
     }
 
+    /**
+     * метод запуска потоков.
+     */
     public void runProg() {
-//        System.out.println(Runtime.getRuntime().availableProcessors());
-        intership(map);
+        new Thread() {
+            @Override
+            public void run() {
+                for (int i = 0; i < map[0].length; i++) {
+                    for (int j = 0; j < map.length; j++) {
+                        if (map[i][j] == 1) {
+                            Position position = new Position(i, j);
+                            if (!oldPosition.contains(position)) {
+                                synchronized (storegeIntership) {
+                                    storegeIntership.add(new Node(position));
+                                }
+
+                            }
+                        }
+                        synchronized (storegeIntership) {
+                            storegeIntership.notifyAll();
+                        }
+                    }
+                }
+                finish = true;
+
+            }
+        }.start();
+
+        Thread t2 = new Thread() {
+            @Override
+            public void run() {
+                while (true) {
+                    if (storegeIntership.isEmpty()) {
+                        try {
+                            synchronized (storegeIntership) {
+                                storegeIntership.wait();
+                            }
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    } else {
+                        synchronized (storegeIntership) {
+                            Node node = findNeighbors(storegeIntership.get(0));
+                            storegeIntership.remove(0);
+                            set.add(node);
+                        }
+                    }
+                    if (storegeIntership.isEmpty() && finish) {
+                        break;
+                    }
+                    if (set.size() == 10) {
+                        break;
+                    }
+
+                }
+            }
+        };
+
+        // запуск 2х потоков
+//        t1.start();
+        t2.start();
+
+        try {
+            // главный поток ожидает завершения потока t2
+            t2.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         prinIntership();
     }
 
